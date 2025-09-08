@@ -1,5 +1,28 @@
 // src/HomePage.jsx
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Authenticator,
+  useAuthenticator,
+  View
+} from "@aws-amplify/ui-react";
+import "@aws-amplify/ui-react/styles.css";
+
+// --- Burnt-orange theme for Amplify Authenticator ---
+const customTheme = {
+  name: "BurntOrangeTheme",
+  tokens: {
+    colors: {
+      brand: {
+        10: "#FFF8F3",
+        80: "#E66A00",
+        90: "#D45F00",
+        100: "#BF5700",
+      },
+    },
+    space: { small: "0.5rem", medium: "1rem", large: "1.5rem" },
+    radii: { small: "8px", medium: "10px", large: "14px" },
+  },
+};
 
 // Robust asset resolution for the logo: src/assets or public/src-assets
 let logoUrl;
@@ -9,9 +32,70 @@ try {
   logoUrl = "/src-assets/LogoSimple.jpg"; // public/src-assets
 }
 
+// Robust asset resolution for the profile image
+let profileUrl;
+try {
+  profileUrl = new URL("./assets/Profile.jpeg?url", import.meta.url).href; // src/assets
+} catch {
+  profileUrl = "/src-assets/Profile.jpeg"; // public/src-assets
+}
+
 export default function HomePage() {
   const burntOrange = "#BF5700";
   const lightHighlight = "#FFF8F3";
+
+  // Auth + modal state
+  const { authStatus } = useAuthenticator((context) => [context.authStatus]);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [pendingPath, setPendingPath] = useState(null);
+  const modalRef = useRef(null);
+
+  // Intercept protected nav
+  const handleProtectedNav = (e, path) => {
+    e.preventDefault();
+    if (authStatus === "authenticated") {
+      window.location.href = path; // or use react-router navigate
+    } else {
+      setPendingPath(path);
+      setAuthOpen(true);
+    }
+  };
+
+  // After sign-in
+  const onAuthSuccess = () => {
+    const target = pendingPath || "/";
+    setAuthOpen(false);
+    setPendingPath(null);
+    window.location.href = target;
+  };
+
+  // Esc-to-close, body scroll lock, and robust outside-click
+  useEffect(() => {
+    if (!authOpen) return;
+
+    const onKey = (e) => {
+      if (e.key === "Escape") setAuthOpen(false);
+    };
+    const onDocPointerDown = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        setAuthOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDocPointerDown, true);
+    document.addEventListener("touchstart", onDocPointerDown, true);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDocPointerDown, true);
+      document.removeEventListener("touchstart", onDocPointerDown, true);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [authOpen]);
 
   return (
     <div
@@ -24,7 +108,7 @@ export default function HomePage() {
         minHeight: "100vh",
       }}
     >
-      {/* Navigation Menu */}
+      {/* Navigation Menu (protected) */}
       <nav
         style={{
           display: "flex",
@@ -34,20 +118,27 @@ export default function HomePage() {
           flexWrap: "wrap",
         }}
       >
-        {["Economy", "Stocks", "Bonds", "Other"].map((item) => (
-          <a
-            key={item}
-            href={`/${item.toLowerCase()}`}
-            style={{
-              textDecoration: "none",
-              color: burntOrange,
-              fontWeight: "bold",
-              fontSize: "1.1rem",
-            }}
-          >
-            {item}
-          </a>
-        ))}
+        {["Research"].map((item) => {
+          const path = `/${item.toLowerCase().replace(/\s+/g, "-")}`;
+          return (
+            <a
+              key={item}
+              href={path}
+              onClick={(e) => handleProtectedNav(e, path)}
+              style={{
+                textDecoration: "none",
+                color: burntOrange,
+                fontWeight: "bold",
+                fontSize: "1.1rem",
+                cursor: "pointer",
+              }}
+              aria-label={`${item} (sign-in required)`}
+              title="Sign-in required"
+            >
+              {item}
+            </a>
+          );
+        })}
       </nav>
 
       {/* Header: logo + title */}
@@ -137,8 +228,9 @@ export default function HomePage() {
           }}
         >
           Today’s chart features Apple Inc. (AAPL), showcasing key price action
-          and technical signals. This daily highlight is designed to provide
-          timely context and insights for traders and long-term investors.
+          and technical signals. Apple is rounding out a cup-with-handle base 
+          but lagging on a relative basis versus the S&amp;P 500 and overbought over the shorter term.
+          Nonetheless the price action is very bullish with supportive volume.
         </p>
       </section>
 
@@ -165,18 +257,42 @@ export default function HomePage() {
         >
           About Us
         </h2>
-        <p style={{ fontSize: "1.05rem", lineHeight: 1.7, margin: 0 }}>
-          <strong>Longhorn Research LLC</strong> provides independent economic
-          and market research focused on clarity, discipline, and practical
-          application. Led by <strong>Kyle Smith</strong>, a financial professional
-          with over 20 years of experience at firms including{" "}
-          <strong>BlackRock</strong>,{" "}
-          <strong>Dimensional Fund Advisors</strong>, and{" "}
-          <strong>Bank of America</strong>, our mission is to translate data and
-          market structure into objective, actionable insights. We combine
-          macroeconomic perspectives with technical depth to inform better
-          portfolio and business decisions.
-        </p>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "20px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <img
+            src={profileUrl}
+            alt="Kyle Smith Profile"
+            style={{
+              width: "140px",
+              height: "140px",
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: `3px solid ${burntOrange}`,
+              boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+              flexShrink: 0,
+            }}
+          />
+
+          <p style={{ fontSize: "1.05rem", lineHeight: 1.7, margin: 0, flex: 1 }}>
+            <strong>Longhorn Research LLC</strong> provides independent economic
+            and market research focused on clarity, discipline, and practical
+            application. Led by <strong>Kyle Smith</strong>, a financial professional
+            with over 20 years of experience at firms including{" "}
+            <strong>BlackRock</strong>,{" "}
+            <strong>Dimensional Fund Advisors</strong>, and{" "}
+            <strong>Bank of America</strong>, our mission is to translate data and
+            market structure into objective, actionable insights. We combine
+            macroeconomic perspectives with technical depth to inform better
+            portfolio and business decisions.
+          </p>
+        </div>
       </section>
 
       {/* Services */}
@@ -200,7 +316,7 @@ export default function HomePage() {
             color: burntOrange,
           }}
         >
-          Services & Research
+          Services &amp; Research
         </h2>
         <ul
           style={{
@@ -242,6 +358,98 @@ export default function HomePage() {
       >
         © {new Date().getFullYear()} Longhorn Research LLC
       </footer>
+
+      {/* ---------- AUTH MODAL (only shows when needed) ---------- */}
+      {authOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign in"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            zIndex: 10000,
+          }}
+        >
+          <div
+            ref={modalRef}
+            style={{
+              position: "relative",
+              background: "#fff",
+              borderRadius: "12px",
+              width: "min(520px, 95vw)",
+              maxHeight: "90vh",
+              overflow: "auto",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+              border: `3px solid ${burntOrange}`,
+            }}
+          >
+            {/* Close (X) button */}
+            <button
+              onClick={() => setAuthOpen(false)}
+              aria-label="Close sign-in modal"
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                border: "none",
+                background: "transparent",
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                color: burntOrange,
+                cursor: "pointer",
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+
+            <View
+              padding="1rem"
+              backgroundColor="#FFF8F3"
+              style={{ borderBottom: `1px solid ${burntOrange}33` }}
+            >
+              <h3 style={{ margin: 0, color: burntOrange }}>Sign in to continue</h3>
+            </View>
+
+            <div style={{ padding: "1rem" }}>
+              <Authenticator
+                hideSignUp={false}
+                loginMechanisms={["email"]}
+                socialProviders={[]}
+                theme={customTheme}
+              >
+                {() => (
+                  <View>
+                    <p style={{ margin: "0.5rem 0 1rem 0" }}>
+                      You’re signed in. Continue to your page.
+                    </p>
+                    <button
+                      onClick={onAuthSuccess}
+                      style={{
+                        background: burntOrange,
+                        border: "none",
+                        color: "#fff",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Go
+                    </button>
+                  </View>
+                )}
+              </Authenticator>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
